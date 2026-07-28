@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import librosa
 import joblib
+import os
 
 st.set_page_config(page_title="Urban Sound Classifier", page_icon="🔊")
 
@@ -43,32 +44,65 @@ def extract_features_v2(file_path):
     except Exception:
         return None
 
-st.title("Urban Sound Classifier — Hybrid Mixture-of-Experts Demo")
-st.write("Upload a city sound clip (WAV format). The system first determines whether it "
-         "falls into the 'Human/Transient' or 'Mechanical/Vehicle' category, then passes it "
-         "to the corresponding expert model for final, fine-grained classification.")
+def classify(file_path):
+    feat = extract_features_v2(file_path)
+    if feat is None:
+        return None
+    feat_scaled = scaler_final.transform(feat.reshape(1, -1))
+    category_pred = router_final.predict(feat_scaled)[0]
+    category_proba = router_final.predict_proba(feat_scaled)[0]
 
+    if category_pred == 0:
+        final_pred = expert_1_final.predict(feat_scaled)[0]
+    else:
+        final_pred = expert_2_final.predict(feat_scaled)[0]
+
+    return category_pred, category_proba[category_pred], final_pred
+
+st.title("Urban Sound Classifier — Hybrid Mixture-of-Experts Demo")
+st.write("Upload a city sound clip, or try one of the sample sounds below. The system first "
+         "determines whether it falls into the 'Human/Transient' or 'Mechanical/Vehicle' category, "
+         "then passes it to the corresponding expert model for final, fine-grained classification.")
+
+st.subheader("Try a sample sound")
+SAMPLE_DIR = "samples"
+sample_files = sorted([f for f in os.listdir(SAMPLE_DIR) if f.lower().endswith('.wav')]) if os.path.isdir(SAMPLE_DIR) else []
+
+selected_sample = None
+if sample_files:
+    for fname in sample_files:
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.audio(os.path.join(SAMPLE_DIR, fname))
+        with col2:
+            if st.button(f"Use {fname}", key=f"sample_{fname}"):
+                selected_sample = os.path.join(SAMPLE_DIR, fname)
+else:
+    st.caption("(No sample sounds added yet)")
+
+st.subheader("Or upload your own")
 uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
 
-if uploaded_file is not None:
-    st.audio(uploaded_file, format="audio/wav")
+if "audio_path" not in st.session_state:
+    st.session_state.audio_path = None
 
+if uploaded_file is not None:
     with open("temp_audio.wav", "wb") as f:
         f.write(uploaded_file.getbuffer())
+    st.session_state.audio_path = "temp_audio.wav"
+    st.audio(uploaded_file, format="audio/wav")
+elif selected_sample is not None:
+    st.session_state.audio_path = selected_sample
 
-    feat = extract_features_v2("temp_audio.wav")
-    if feat is None:
-        st.error("Unable to process this audio, please try a different file.")
-    else:
-        feat_scaled = scaler_final.transform(feat.reshape(1, -1))
-        category_pred = router_final.predict(feat_scaled)[0]
-        category_proba = router_final.predict_proba(feat_scaled)[0]
+if st.session_state.audio_path is not None:
+    if st.button("Analyze Sound", type="primary"):
+        with st.spinner("Extracting features and classifying..."):
+            result = classify(st.session_state.audio_path)
 
-        if category_pred == 0:
-            final_pred = expert_1_final.predict(feat_scaled)[0]
+        if result is None:
+            st.error("Unable to process this audio; please try a different file.")
         else:
-            final_pred = expert_2_final.predict(feat_scaled)[0]
-
-        st.subheader(f"Predicted Category: {CATEGORY_NAMES[category_pred]}")
-        st.write(f"Router confidence: {category_proba[category_pred]:.1%}")
-        st.subheader(f"Final Predicted Class: **{CLASS_NAMES[final_pred]}**")
+            category_pred, confidence, final_pred = result
+            st.subheader(f"Predicted Category: {CATEGORY_NAMES[category_pred]}")
+            st.write(f"Router confidence: {confidence:.1%}")
+            st.subheader(f"Final Predicted Class: **{CLASS_NAMES[final_pred]}**")
