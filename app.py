@@ -89,6 +89,11 @@ else:
     st.caption("(No sample sounds added yet)")
 
 st.subheader("Or upload your own")
+st.caption(
+    "For best results, upload a clip containing one of these 10 sound types: "
+    "air conditioner, car horn, children playing, dog bark, drilling, "
+    "engine idling, gun shot, jackhammer, siren, or street music."
+)
 uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
 
 if uploaded_file is not None:
