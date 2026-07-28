@@ -64,36 +64,41 @@ st.write("Upload a city sound clip, or try one of the sample sounds below. The s
          "determines whether it falls into the 'Human/Transient' or 'Mechanical/Vehicle' category, "
          "then passes it to the corresponding expert model for final, fine-grained classification.")
 
+if "audio_path" not in st.session_state:
+    st.session_state.audio_path = None
+if "selected_sample_idx" not in st.session_state:
+    st.session_state.selected_sample_idx = None
+
+# --- 试听样例区域：被选中的按钮会自动变灰 ---
 st.subheader("Try a sample sound")
 SAMPLE_DIR = "samples"
 sample_files = sorted([f for f in os.listdir(SAMPLE_DIR) if f.lower().endswith('.wav')]) if os.path.isdir(SAMPLE_DIR) else []
 
-selected_sample = None
 if sample_files:
-    for fname in sample_files:
+    for i, fname in enumerate(sample_files):
         col1, col2 = st.columns([3, 1])
         with col1:
             st.audio(os.path.join(SAMPLE_DIR, fname))
         with col2:
-            if st.button(f"Use {fname}", key=f"sample_{fname}"):
-                selected_sample = os.path.join(SAMPLE_DIR, fname)
+            is_selected = (st.session_state.selected_sample_idx == i)
+            if st.button(f"Use Sample {i+1}", key=f"sample_{fname}", disabled=is_selected):
+                st.session_state.selected_sample_idx = i
+                st.session_state.audio_path = os.path.join(SAMPLE_DIR, fname)
+                st.rerun()
 else:
     st.caption("(No sample sounds added yet)")
 
 st.subheader("Or upload your own")
 uploaded_file = st.file_uploader("Upload a WAV file", type=["wav"])
 
-if "audio_path" not in st.session_state:
-    st.session_state.audio_path = None
-
 if uploaded_file is not None:
     with open("temp_audio.wav", "wb") as f:
         f.write(uploaded_file.getbuffer())
     st.session_state.audio_path = "temp_audio.wav"
+    st.session_state.selected_sample_idx = None  # 上传自己的文件时，取消样例的灰色选中状态
     st.audio(uploaded_file, format="audio/wav")
-elif selected_sample is not None:
-    st.session_state.audio_path = selected_sample
 
+# --- 分析按钮 ---
 if st.session_state.audio_path is not None:
     if st.button("Analyze Sound", type="primary"):
         with st.spinner("Extracting features and classifying..."):
